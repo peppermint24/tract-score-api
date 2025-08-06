@@ -1,24 +1,29 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, Query
 import geopandas as gpd
+import json
 from shapely.geometry import Point
 
-app = Flask(__name__)
-tracts = gpd.read_file("filtered_tracts.gpkg")  # Assumes it's in root folder
+app = FastAPI()
 
-@app.route("/get_score")
-def get_score():
-    lat = request.args.get("lat", type=float)
-    lon = request.args.get("lon", type=float)
+# Load GeoPackage (one-time on startup)
+tracts_gdf = gpd.read_file("filtered_tracts.gpkg")
 
-    if lat is None or lon is None:
-        return jsonify({"error": "Missing lat or lon"}), 400
+# Load JSON scores
+with open("tract_lookup.json", "r") as f:
+    tract_scores = json.load(f)
 
-    point = gpd.GeoSeries([Point(lon, lat)], crs="EPSG:4326")
-    point = point.to_crs(tracts.crs)
+@app.get("/get_score")
+def get_score(lat: float = Query(...), lon: float = Query(...)):
+    point = Point(lon, lat)
+    match = tracts_gdf[tracts_gdf.geometry.contains(point)]
 
-    match = tracts[tracts.contains(point.iloc[0])]
     if match.empty:
-        return jsonify({"tract": None, "score": None})
+        return {"error": "No tract found for provided coordinates."}
 
-    row = match.iloc[0]
-    return jsonify({"tract": row["GEOID"], "score": row["score"]})
+    tract_id = match.iloc[0]["GEOID"]
+    score = tract_scores.get(tract_id)
+
+    if score is None:
+        return {"tract": tract_id, "error": "Tract found, but no score available."}
+
+    return {"tract": tract_id, "score": score}
