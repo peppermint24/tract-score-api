@@ -1,4 +1,6 @@
-Flask
-gunicorn
+fastapi
+uvicorn
 geopandas
 shapely
+pyproj
+fiona
